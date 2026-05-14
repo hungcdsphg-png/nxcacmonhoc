@@ -38,6 +38,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 type ViewMode = 'table' | 'content';
 const HOC_KY = ["Giữa kì 1", "Cuối kì 1", "Giữa kì 2", "Cuối kì 2"];
 
+const SPECIAL_SUBJECTS = [
+  "Đạo đức",
+  "Tự nhiên và Xã hội",
+  "Hoạt động trải nghiệm",
+  "Nghệ thuật (Mỹ thuật)",
+  "Nghệ thuật (Âm nhạc)",
+  "Giáo dục thể chất"
+];
+
 const App: React.FC = () => {
   const [records, setRecords] = useState<StudentRecord[]>([]);
   const [commentBank, setCommentBank] = useState<BankComment[]>([]);
@@ -69,22 +78,13 @@ const App: React.FC = () => {
 
   const calculatedRecords = useMemo(() => {
     const abbr = getSubjectAbbr(selectedSubject);
+    const gradeNumber = selectedGrade.replace(/[^0-9]/g, '');
+    const isSpecialSubject = SPECIAL_SUBJECTS.includes(selectedSubject);
+
     const counters: Record<string, number> = {};
     const semesterAbbr = selectedSemester === "Giữa kì 1" ? "GK1" : 
                         selectedSemester === "Cuối kì 1" ? "CK1" :
                         selectedSemester === "Giữa kì 2" ? "GK2" : "CK2";
-    
-    // Kiểm tra môn học không dùng điểm
-    const isLevelBased = [
-      "Đạo đức",
-      "Tự nhiên và Xã hội",
-      "Hoạt động trải nghiệm",
-      "Nghệ thuật (Mỹ thuật)",
-      "Nghệ thuật (Âm nhạc)",
-      "Giáo dục thể chất"
-    ].includes(selectedSubject);
-
-    const gradeNum = selectedGrade.replace("Khối ", "");
     
     const result: StudentRecord[] = [];
     for (let i = 0; i < records.length; i++) {
@@ -101,8 +101,7 @@ const App: React.FC = () => {
       level = level || 'H';
       
       let targetGroup: BankComment[] = [];
-      // Môn dùng điểm thì ưu tiên lọc theo điểm, môn không dùng điểm (isLevelBased) hoặc không có điểm thì lọc theo mức
-      if (!isLevelBased && studentScore > 0) {
+      if (!isSpecialSubject && studentScore > 0) {
         targetGroup = commentBank.filter(b => b.diem === studentScore);
       }
       
@@ -114,56 +113,47 @@ const App: React.FC = () => {
       let code = record.maNhanXet;
 
       if (targetGroup.length > 0) {
-        // Tạo mã ngẫu nhiên nhưng ổn định
         const nameSeed = record.hoTen.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        // Sử dụng một số lớn và cộng thêm i để tạo sự khác biệt giữa các học sinh
-        // Mã không được liên tiếp: dùng một phép nhân để xáo trộn index
-        let bankIndex = (nameSeed * 31 + record.stt * 13) % targetGroup.length;
+        // Tăng tính ngẫu nhiên bằng cách kết hợp nhiều yếu tố và dùng số nguyên tố lớn
+        // Thêm i vào seed để đảm bảo sự khác biệt ngay cả khi các thông tin khác giống nhau
+        let bankIndex = (record.stt * 227 + nameSeed * 13 + i * 19) % targetGroup.length;
+        let selectedItem = targetGroup[bankIndex];
         
-        // Tránh trùng mã với học sinh ngay trước đó nếu cùng nhóm (Điểm/Mức)
-        if (i > 0 && targetGroup.length > 1) {
-            const prev = result[i-1];
-            // So sánh nội dung để xem có trùng mẫu không
-            if (prev.noiDung === targetGroup[bankIndex].noiDung) {
-                bankIndex = (bankIndex + 1) % targetGroup.length;
-            }
+        // Kiểm tra tránh trùng với học sinh ngay trước đó nếu cùng nhóm tiềm năng
+        if (i > 0 && targetGroup.length > 1 && !record.maNhanXet && !record.noiDung) {
+          const prev = result[i - 1];
+          const prevScore = prev.diem > 0 ? Math.round(prev.diem) : 0;
+          const samePotentialGroup = isSpecialSubject ? (prev.mucDo === level) : (prevScore === studentScore && prev.mucDo === level);
+          
+          if (samePotentialGroup && selectedItem.noiDung === prev.noiDung) {
+            bankIndex = (bankIndex + 1) % targetGroup.length;
+            selectedItem = targetGroup[bankIndex];
+          }
         }
-
-        const selectedItem = targetGroup[bankIndex];
         
         if (!record.noiDung) {
           autoContent = selectedItem.noiDung;
         }
         
         if (!record.maNhanXet) {
-          const itemIndexInBank = commentBank.indexOf(selectedItem);
-          const sameGroupInBank = commentBank.slice(0, itemIndexInBank + 1)
-            .filter(b => b.diem === selectedItem.diem && b.mucDo === selectedItem.mucDo);
+          // Tìm index của item trong nhóm targetGroup để làm số cuối của mã
+          const sameGroupInTarget = targetGroup.filter(b => b.id === selectedItem.id || targetGroup.indexOf(b) <= targetGroup.indexOf(selectedItem));
+          const indexInGroup = targetGroup.indexOf(selectedItem) + 1;
           
-          if (isLevelBased) {
-            // Định dạng mã mới cho các môn không dùng điểm: [Môn][Lớp][Học kì][Mức][Số]
-            code = `${abbr}${gradeNum}${semesterAbbr}${selectedItem.mucDo}${sameGroupInBank.length}`;
-          } else {
-            const itemDiemStr = selectedItem.diem || "";
-            code = `${abbr}${itemDiemStr}${semesterAbbr}${selectedItem.mucDo}${sameGroupInBank.length}`;
-          }
+          const middlePart = isSpecialSubject ? gradeNumber : (selectedItem.diem || "");
+          code = `${abbr}${middlePart}${semesterAbbr}${selectedItem.mucDo}${indexInGroup}`;
         }
       } else if (!record.maNhanXet) {
         const counterKey = `${studentScore}_${level}`;
         counters[counterKey] = (counters[counterKey] || 0) + 1;
-        
-        if (isLevelBased) {
-          code = `${abbr}${gradeNum}${semesterAbbr}${level}${counters[counterKey]}`;
-        } else {
-          const scoreStr = studentScore > 0 ? studentScore.toString() : "";
-          code = `${abbr}${scoreStr}${semesterAbbr}${level}${counters[counterKey]}`;
-        }
+        const middlePart = isSpecialSubject ? gradeNumber : (studentScore > 0 ? studentScore.toString() : "");
+        code = `${abbr}${middlePart}${semesterAbbr}${level}${counters[counterKey]}`;
       }
 
       result.push({ ...record, mucDo: level, maNhanXet: code, noiDung: autoContent, thoiDiem });
     }
     return result;
-  }, [records, selectedSubject, commentBank, selectedSemester, selectedGrade]);
+  }, [records, selectedSubject, commentBank, selectedSemester]);
 
   const filteredRecords = useMemo(() => {
     if (!searchTerm) return calculatedRecords;
@@ -206,7 +196,7 @@ const App: React.FC = () => {
       );
       if (bank.length > 0) {
         setCommentBank(bank);
-        setNotification({ type: 'success', message: `Đã tạo xong ngân hàng 34 mẫu nhận xét cho môn ${selectedSubject}.` });
+        setNotification({ type: 'success', message: `Đã tạo xong ngân hàng ${bank.length} mẫu nhận xét cho môn ${selectedSubject}.` });
       }
     } catch (error: any) {
       setNotification({ type: 'error', message: 'Lỗi AI khi tạo nội dung.' });
@@ -551,12 +541,16 @@ const App: React.FC = () => {
       return;
     }
     const abbr = getSubjectAbbr(selectedSubject);
+    const gradeNumber = selectedGrade.replace(/[^0-9]/g, '');
+    const isSpecialSubject = SPECIAL_SUBJECTS.includes(selectedSubject);
+
     const semesterAbbr = selectedSemester === "Giữa kì 1" ? "GK1" : 
                         selectedSemester === "Cuối kì 1" ? "CK1" :
                         selectedSemester === "Giữa kì 2" ? "GK2" : "CK2";
     const data = commentBank.map((item, index) => {
       const sameGroup = commentBank.slice(0, index + 1).filter(b => b.diem === item.diem && b.mucDo === item.mucDo);
-      const displayCode = `${abbr}${item.diem || ""}${semesterAbbr}${item.mucDo}${sameGroup.length}`;
+      const middlePart = isSpecialSubject ? gradeNumber : (item.diem || "");
+      const displayCode = `${abbr}${middlePart}${semesterAbbr}${item.mucDo}${sameGroup.length}`;
       
       return {
         "STT": index + 1,
@@ -574,7 +568,7 @@ const App: React.FC = () => {
     ws['!cols'] = wscols;
 
     XLSX.writeFile(wb, `NganHang_${selectedGrade}_${selectedSubject}.xlsx`);
-    setNotification({ type: 'success', message: 'Đã xuất file ngân hàng mẫu 34 nội dung.' });
+    setNotification({ type: 'success', message: `Đã xuất file ngân hàng mẫu ${commentBank.length} nội dung.` });
   };
 
   const handleSaveApiKey = () => {
@@ -996,11 +990,18 @@ const App: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {commentBank.map((item, idx) => {
                     const abbr = getSubjectAbbr(selectedSubject);
+                    const gradeNumber = selectedGrade.replace(/[^0-9]/g, '');
+                    const isSpecialSubject = SPECIAL_SUBJECTS.includes(selectedSubject);
+
                     const semesterAbbr = selectedSemester === "Giữa kì 1" ? "GK1" : 
                                         selectedSemester === "Cuối kì 1" ? "CK1" :
                                         selectedSemester === "Giữa kì 2" ? "GK2" : "CK2";
-                    const sameGroup = commentBank.slice(0, idx + 1).filter(b => b.diem === item.diem && b.mucDo === item.mucDo);
-                    const displayCode = `${abbr}${item.diem || ""}${semesterAbbr}${item.mucDo}${sameGroup.length}`;
+                    
+                    const groupComments = commentBank.filter(b => b.diem === item.diem && b.mucDo === item.mucDo);
+                    const indexInGroup = groupComments.findIndex(b => b.id === item.id) + 1;
+                    
+                    const middlePart = isSpecialSubject ? gradeNumber : (item.diem || "");
+                    const displayCode = `${abbr}${middlePart}${semesterAbbr}${item.mucDo}${indexInGroup}`;
                     return (
                       <tr key={item.id} className="hover:bg-indigo-50/20 transition-all">
                         <td className="px-8 py-8">

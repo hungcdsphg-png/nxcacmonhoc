@@ -153,18 +153,6 @@ export const extractLessonsFromPpct = async (
   }
 };
 
-export const isLevelBasedSubject = (subject: string): boolean => {
-  const levelBasedSubjets = [
-    "Đạo đức",
-    "Tự nhiên và Xã hội",
-    "Hoạt động trải nghiệm",
-    "Nghệ thuật (Mỹ thuật)",
-    "Nghệ thuật (Âm nhạc)",
-    "Giáo dục thể chất"
-  ];
-  return levelBasedSubjets.includes(subject);
-};
-
 export const generateCommentBank = async (
   subject: string,
   gradeLevel: string,
@@ -176,19 +164,27 @@ export const generateCommentBank = async (
   const ai = new GoogleGenAI({ apiKey });
   
   const isTiengViet = subject === "Tiếng Việt";
-  const isLevelBased = isLevelBasedSubject(subject);
+  const specialSubjects = [
+    "Đạo đức",
+    "Tự nhiên và Xã hội",
+    "Hoạt động trải nghiệm",
+    "Nghệ thuật (Mỹ thuật)",
+    "Nghệ thuật (Âm nhạc)",
+    "Giáo dục thể chất"
+  ];
+  const isSpecialSubject = specialSubjects.includes(subject);
 
-  let requirementPrompt = "";
-  if (isLevelBased) {
-    requirementPrompt = `
-  YÊU CẦU SỐ LƯỢNG CHÍNH XÁC (Môn này không dùng điểm, chỉ dùng Mức đạt):
+  let quantityPrompt = "";
+  if (isSpecialSubject) {
+    quantityPrompt = `
+  YÊU CẦU SỐ LƯỢNG CHÍNH XÁC (CHO MÔN ${subject.toUpperCase()}):
   - Mức T (Hoàn thành tốt): 8 mẫu
-  - Mức H (Hoàn thành): 20 mẫu
+  - Mức H (Hoàn thành): 26 mẫu
   - Mức C (Chưa hoàn thành): 5 mẫu
-  Tổng cộng: 33 mẫu.
-  LƯU Ý: Với môn này, trường 'diem' trong JSON trả về hãy để giá trị 0.`;
+  Tổng cộng: 39 mẫu.
+  Lưu ý: Đối với môn này, do không chấm điểm nên hãy để trường "diem" là 0 cho tất cả các mẫu. Tập trung vào nhận xét chung theo mức đạt được.`;
   } else {
-    requirementPrompt = `
+    quantityPrompt = `
   YÊU CẦU SỐ LƯỢNG CHÍNH XÁC:
   - Điểm 10: 3 mẫu (Mức T - Xuất sắc)
   - Điểm 9: 3 mẫu (Mức T - Giỏi)
@@ -207,13 +203,15 @@ export const generateCommentBank = async (
     : `DỰA TRÊN DANH SÁCH BÀI HỌC TRONG PPCT SAU:
   "${ppct || "Chưa cung cấp PPCT"}"`}
 
-  ${requirementPrompt}
+  ${quantityPrompt}
   
   LƯU Ý QUAN TRỌNG: 
   1. ${isTiengViet 
       ? "TUYỆT ĐỐI KHÔNG lồng ghép tên các bài học cụ thể. Thay vào đó, hãy phân tích mức độ thành thạo các kỹ năng Đọc, Viết theo yêu cầu của học kỳ " + semester + "." 
-      : "PHẢI lồng ghép tên các bài học, bài đọc, nội dung viết từ PPCT vào nhận xét."}
-  2. Nội dung nhận xét PHẢI tương xứng với từng mức điểm/mức đạt cụ thể và học kỳ ${semester}.
+      : isSpecialSubject 
+        ? "PHẢI lồng ghép linh hoạt nội dung bài học từ PPCT vào nhận xét chung cho mức đạt được."
+        : "PHẢI lồng ghép tên các bài học, bài đọc, nội dung viết từ PPCT vào nhận xét."}
+  2. Nội dung nhận xét PHẢI tương xứng với từng mức đạt được/điểm cụ thể và học kỳ ${semester}.
   3. Mỗi câu nhận xét phải khác nhau, không được lặp lại.
   4. Phải bám sát Mức đạt (T, H, C) tương ứng.
   
