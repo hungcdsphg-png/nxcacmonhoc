@@ -74,6 +74,18 @@ const App: React.FC = () => {
                         selectedSemester === "Cuối kì 1" ? "CK1" :
                         selectedSemester === "Giữa kì 2" ? "GK2" : "CK2";
     
+    // Kiểm tra môn học không dùng điểm
+    const isLevelBased = [
+      "Đạo đức",
+      "Tự nhiên và Xã hội",
+      "Hoạt động trải nghiệm",
+      "Nghệ thuật (Mỹ thuật)",
+      "Nghệ thuật (Âm nhạc)",
+      "Giáo dục thể chất"
+    ].includes(selectedSubject);
+
+    const gradeNum = selectedGrade.replace("Khối ", "");
+    
     const result: StudentRecord[] = [];
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
@@ -89,9 +101,11 @@ const App: React.FC = () => {
       level = level || 'H';
       
       let targetGroup: BankComment[] = [];
-      if (studentScore > 0) {
+      // Môn dùng điểm thì ưu tiên lọc theo điểm, môn không dùng điểm (isLevelBased) hoặc không có điểm thì lọc theo mức
+      if (!isLevelBased && studentScore > 0) {
         targetGroup = commentBank.filter(b => b.diem === studentScore);
       }
+      
       if (targetGroup.length === 0) {
         targetGroup = commentBank.filter(b => b.mucDo === level);
       }
@@ -100,23 +114,22 @@ const App: React.FC = () => {
       let code = record.maNhanXet;
 
       if (targetGroup.length > 0) {
-        // Tạo seed ngẫu nhiên nhưng ổn định dựa trên thông tin học sinh
+        // Tạo mã ngẫu nhiên nhưng ổn định
         const nameSeed = record.hoTen.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        // Sử dụng số nguyên tố lớn để tăng tính ngẫu nhiên và tránh mã liên tiếp
-        let bankIndex = (record.stt * 137 + nameSeed * 17) % targetGroup.length;
-        let selectedItem = targetGroup[bankIndex];
+        // Sử dụng một số lớn và cộng thêm i để tạo sự khác biệt giữa các học sinh
+        // Mã không được liên tiếp: dùng một phép nhân để xáo trộn index
+        let bankIndex = (nameSeed * 31 + record.stt * 13) % targetGroup.length;
         
-        // Kiểm tra tránh trùng với học sinh ngay trước đó nếu cùng điểm và mức đạt
-        if (i > 0 && targetGroup.length > 1 && !record.maNhanXet && !record.noiDung) {
-          const prev = result[i - 1];
-          const prevScore = prev.diem > 0 ? Math.round(prev.diem) : 0;
-          if (prevScore === studentScore && prev.mucDo === level) {
-            if (selectedItem.noiDung === prev.noiDung) {
-              bankIndex = (bankIndex + 1) % targetGroup.length;
-              selectedItem = targetGroup[bankIndex];
+        // Tránh trùng mã với học sinh ngay trước đó nếu cùng nhóm (Điểm/Mức)
+        if (i > 0 && targetGroup.length > 1) {
+            const prev = result[i-1];
+            // So sánh nội dung để xem có trùng mẫu không
+            if (prev.noiDung === targetGroup[bankIndex].noiDung) {
+                bankIndex = (bankIndex + 1) % targetGroup.length;
             }
-          }
         }
+
+        const selectedItem = targetGroup[bankIndex];
         
         if (!record.noiDung) {
           autoContent = selectedItem.noiDung;
@@ -127,20 +140,30 @@ const App: React.FC = () => {
           const sameGroupInBank = commentBank.slice(0, itemIndexInBank + 1)
             .filter(b => b.diem === selectedItem.diem && b.mucDo === selectedItem.mucDo);
           
-          const itemDiemStr = selectedItem.diem || "";
-          code = `${abbr}${itemDiemStr}${semesterAbbr}${selectedItem.mucDo}${sameGroupInBank.length}`;
+          if (isLevelBased) {
+            // Định dạng mã mới cho các môn không dùng điểm: [Môn][Lớp][Học kì][Mức][Số]
+            code = `${abbr}${gradeNum}${semesterAbbr}${selectedItem.mucDo}${sameGroupInBank.length}`;
+          } else {
+            const itemDiemStr = selectedItem.diem || "";
+            code = `${abbr}${itemDiemStr}${semesterAbbr}${selectedItem.mucDo}${sameGroupInBank.length}`;
+          }
         }
       } else if (!record.maNhanXet) {
         const counterKey = `${studentScore}_${level}`;
         counters[counterKey] = (counters[counterKey] || 0) + 1;
-        const scoreStr = studentScore > 0 ? studentScore.toString() : "";
-        code = `${abbr}${scoreStr}${semesterAbbr}${level}${counters[counterKey]}`;
+        
+        if (isLevelBased) {
+          code = `${abbr}${gradeNum}${semesterAbbr}${level}${counters[counterKey]}`;
+        } else {
+          const scoreStr = studentScore > 0 ? studentScore.toString() : "";
+          code = `${abbr}${scoreStr}${semesterAbbr}${level}${counters[counterKey]}`;
+        }
       }
 
       result.push({ ...record, mucDo: level, maNhanXet: code, noiDung: autoContent, thoiDiem });
     }
     return result;
-  }, [records, selectedSubject, commentBank, selectedSemester]);
+  }, [records, selectedSubject, commentBank, selectedSemester, selectedGrade]);
 
   const filteredRecords = useMemo(() => {
     if (!searchTerm) return calculatedRecords;

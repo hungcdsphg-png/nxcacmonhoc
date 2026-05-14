@@ -153,6 +153,18 @@ export const extractLessonsFromPpct = async (
   }
 };
 
+export const isLevelBasedSubject = (subject: string): boolean => {
+  const levelBasedSubjets = [
+    "Đạo đức",
+    "Tự nhiên và Xã hội",
+    "Hoạt động trải nghiệm",
+    "Nghệ thuật (Mỹ thuật)",
+    "Nghệ thuật (Âm nhạc)",
+    "Giáo dục thể chất"
+  ];
+  return levelBasedSubjets.includes(subject);
+};
+
 export const generateCommentBank = async (
   subject: string,
   gradeLevel: string,
@@ -164,12 +176,19 @@ export const generateCommentBank = async (
   const ai = new GoogleGenAI({ apiKey });
   
   const isTiengViet = subject === "Tiếng Việt";
-  const prompt = `Hãy tạo ngân hàng mẫu nhận xét cho môn ${subject}, ${gradeLevel}, học kỳ: ${semester}.
-  ${isTiengViet 
-    ? "ĐẶC BIỆT CHO MÔN TIẾNG VIỆT: KHÔNG ghi tên bài học cụ thể. Hãy dựa vào PPCT để nắm bắt yêu cầu kiến thức chung của học kỳ nhưng khi viết nhận xét chỉ tập trung vào mức độ đạt được của các kỹ năng Đọc, Viết, Nói, Nghe." 
-    : `DỰA TRÊN DANH SÁCH BÀI HỌC TRONG PPCT SAU:
-  "${ppct || "Chưa cung cấp PPCT"}"`}
+  const isLevelBased = isLevelBasedSubject(subject);
 
+  let requirementPrompt = "";
+  if (isLevelBased) {
+    requirementPrompt = `
+  YÊU CẦU SỐ LƯỢNG CHÍNH XÁC (Môn này không dùng điểm, chỉ dùng Mức đạt):
+  - Mức T (Hoàn thành tốt): 8 mẫu
+  - Mức H (Hoàn thành): 20 mẫu
+  - Mức C (Chưa hoàn thành): 5 mẫu
+  Tổng cộng: 33 mẫu.
+  LƯU Ý: Với môn này, trường 'diem' trong JSON trả về hãy để giá trị 0.`;
+  } else {
+    requirementPrompt = `
   YÊU CẦU SỐ LƯỢNG CHÍNH XÁC:
   - Điểm 10: 3 mẫu (Mức T - Xuất sắc)
   - Điểm 9: 3 mẫu (Mức T - Giỏi)
@@ -179,15 +198,24 @@ export const generateCommentBank = async (
   - Điểm 5: 6 mẫu (Mức H - Trung bình)
   - Điểm 4: 3 mẫu (Mức C - Yếu)
   - Điểm 3: 3 mẫu (Mức C - Kém)
-  Tổng cộng: 34 mẫu.
+  Tổng cộng: 34 mẫu.`;
+  }
+
+  const prompt = `Hãy tạo ngân hàng mẫu nhận xét cho môn ${subject}, ${gradeLevel}, học kỳ: ${semester}.
+  ${isTiengViet 
+    ? "ĐẶC BIỆT CHO MÔN TIẾNG VIỆT: KHÔNG ghi tên bài học cụ thể. Hãy dựa vào PPCT để nắm bắt yêu cầu kiến thức chung của học kỳ nhưng khi viết nhận xét chỉ tập trung vào mức độ đạt được của các kỹ năng Đọc, Viết, Nói, Nghe." 
+    : `DỰA TRÊN DANH SÁCH BÀI HỌC TRONG PPCT SAU:
+  "${ppct || "Chưa cung cấp PPCT"}"`}
+
+  ${requirementPrompt}
   
   LƯU Ý QUAN TRỌNG: 
   1. ${isTiengViet 
       ? "TUYỆT ĐỐI KHÔNG lồng ghép tên các bài học cụ thể. Thay vào đó, hãy phân tích mức độ thành thạo các kỹ năng Đọc, Viết theo yêu cầu của học kỳ " + semester + "." 
       : "PHẢI lồng ghép tên các bài học, bài đọc, nội dung viết từ PPCT vào nhận xét."}
-  2. Nội dung nhận xét PHẢI tương xứng với từng mức điểm cụ thể và học kỳ ${semester}.
+  2. Nội dung nhận xét PHẢI tương xứng với từng mức điểm/mức đạt cụ thể và học kỳ ${semester}.
   3. Mỗi câu nhận xét phải khác nhau, không được lặp lại.
-  4. Phải bám sát Mức đạt (T, H, C) tương ứng với điểm số.
+  4. Phải bám sát Mức đạt (T, H, C) tương ứng.
   
   Yêu cầu: Nội dung mộc mạc, tiếng Việt phổ thông, không dùng từ cấm. Trả về JSON.`;
 
